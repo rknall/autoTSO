@@ -451,7 +451,7 @@ const aQueue = {
                 const next = aQueue.queue[aQueue.index + 1];
                 const delay = next ? next.delay : aQueue.interval;
                 if (new Date().getTime() > aQueue.last + delay + 5000) {
-                    aUI.Alert('Error Occured!, Restarting Automation!', 'ERROR');
+                    aUI.Alert('Error Occurred! Restarting Automation!', 'ERROR');
                     aQueue.run();
                 }
             } catch (e) { }
@@ -6121,7 +6121,7 @@ const auto = {
                         aUtils.file.Write(path, data);
                         aUI.menu.Progress = 90;
                         setTimeout(function () {
-                            aUI.Alert("Updated Successfuly ^_^", 'TransporterAdmiral');
+                            aUI.Alert("Updated Successfully ^_^", 'TransporterAdmiral');
                             reloadScripts();
                         }, 5000);
                     } catch (writeError) {
