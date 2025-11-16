@@ -72,19 +72,66 @@ const LIMITS = {
 
 const WORK_TIME_OFFSET_SECONDS = 12;
 
-// File logging helper
+// Log file helpers
+var getLogFilePath = function() {
+    // Cache the path after first call
+    if (!getLogFilePath.cachedPath) {
+        getLogFilePath.cachedPath = air.File.applicationDirectory.resolvePath('auto').resolvePath('autoTSO_debug.log').nativePath;
+    }
+    return getLogFilePath.cachedPath;
+};
+
+// Log rotation helper
+var rotateLogFiles = function() {
+    try {
+        // Check if rotation is enabled (keepCount > 0)
+        var keepCount = (aSettings && aSettings.defaults && aSettings.defaults.Debug && aSettings.defaults.Debug.logFileKeepCount) || 0;
+
+        if (keepCount === 0) {
+            return; // Rotation disabled
+        }
+
+        var logPath = getLogFilePath();
+        var logFile = new air.File(logPath);
+
+        if (!logFile.exists) {
+            return; // Nothing to rotate
+        }
+
+        // Rotate existing backups (delete oldest, rename others)
+        // autoTSO_debug.log.5 -> delete
+        // autoTSO_debug.log.4 -> autoTSO_debug.log.5
+        // autoTSO_debug.log.3 -> autoTSO_debug.log.4
+        // etc.
+        for (var i = keepCount; i > 0; i--) {
+            var oldBackup = new air.File(logPath + '.' + i);
+            if (i === keepCount) {
+                // Delete the oldest
+                if (oldBackup.exists) {
+                    oldBackup.deleteFile();
+                }
+            } else {
+                // Rename to next number
+                if (oldBackup.exists) {
+                    var newBackup = new air.File(logPath + '.' + (i + 1));
+                    oldBackup.moveTo(newBackup, true);
+                }
+            }
+        }
+
+        // Rename current log to .1
+        var firstBackup = new air.File(logPath + '.1');
+        logFile.moveTo(firstBackup, true);
+
+        console.info('Log file rotated, keeping last', keepCount, 'backups');
+    } catch (e) {
+        console.warn('Failed to rotate log files:', e.message || e.toString());
+    }
+};
+
+// File logging helper - always writes to log file
 var writeToLogFile = function(level, message) {
     try {
-        if (!aSettings || !aSettings.defaults || !aSettings.defaults.Debug || !aSettings.defaults.Debug.writeLogToFile) {
-            return;
-        }
-
-        var logPath = aSettings.defaults.Debug.logFilePath;
-        if (!logPath) {
-            // Default path: user's Documents folder
-            logPath = air.File.documentsDirectory.resolvePath("autoTSO_debug.log").nativePath;
-        }
-
         var now = new Date();
         var timestamp = [
             now.getFullYear(),
@@ -102,7 +149,7 @@ var writeToLogFile = function(level, message) {
 
         var logLine = '[' + timestamp + '] [' + level + '] ' + message + '\n';
 
-        var file = new air.File(logPath);
+        var file = new air.File(getLogFilePath());
         var stream = new air.FileStream();
 
         // Append mode
@@ -698,8 +745,7 @@ const aSettings = {
             enableLogging: true,
             logAdventures: true,
             logCombat: true,
-            writeLogToFile: false,
-            logFilePath: "",
+            logFileKeepCount: 5,
         },
         Security: {
             validateFilePaths: false,
@@ -2028,13 +2074,8 @@ const aUI = {
                         [3, createSwitch('aDebug_LogCombat', aSettings.defaults.Debug.logCombat)],
                     ]),
                     createTableRow([
-                        [9, "Write logs to file"],
-                        [3, createSwitch('aDebug_WriteLogToFile', aSettings.defaults.Debug.writeLogToFile)],
-                    ]),
-                    createTableRow([
-                        [3, "Log file path:"],
-                        [6, $('<input>', { 'id': 'aDebug_LogFilePath', 'class': 'form-control', 'type': 'text', 'value': aSettings.defaults.Debug.logFilePath || '', 'placeholder': 'Default: Documents/autoTSO_debug.log' })],
-                        [3, $('<button>', { 'id': 'aDebug_SelectLogFile', 'class': 'btn btn-primary btn-sm', 'text': 'Browse...' })],
+                        [9, "Rotate log files on startup (keep N backups):"],
+                        [3, $('<input>', { 'id': 'aDebug_LogFileKeepCount', 'class': 'form-control', 'type': 'number', 'min': '0', 'max': '20', 'value': aSettings.defaults.Debug.logFileKeepCount || 5 })],
                     ]),
                     $('<br>'),
                     createTableRow([[9, 'Connectivity'], [3, '&nbsp;']], true),
@@ -2103,23 +2144,6 @@ const aUI = {
                 aWindow.withBody('#aMail_Monitor').val(aSettings.defaults.Mail.TimerMinutes);
                 aWindow.withBody('#aMail_FriendsFilter').click(function () { aUI.modals.trade.filterSettings('Friends') });
                 aWindow.withBody('#aMail_ResourcesFilter').click(function () { aUI.modals.trade.filterSettings('Resources') });
-                aWindow.withBody('#aDebug_SelectLogFile').click(function () {
-                    var file = new air.File();
-                    var currentPath = $('#aDebug_LogFilePath').val();
-                    if (currentPath) {
-                        try {
-                            file.nativePath = currentPath;
-                        } catch (e) {
-                            file = air.File.documentsDirectory;
-                        }
-                    } else {
-                        file = air.File.documentsDirectory;
-                    }
-                    file.browseForSave("Select Log File Location");
-                    file.addEventListener(air.Event.SELECT, function (event) {
-                        $('#aDebug_LogFilePath').val(event.target.nativePath);
-                    });
-                });
                 aWindow.withBody('.buildingSettings').click(function () {
                     aUI.modals.buildingSettings($(this).attr('id').replace('aBuildings_', ''));
                 });
@@ -2156,8 +2180,7 @@ const aUI = {
                     aSettings.defaults.Debug.enableLogging = $('#aDebug_EnableLogging').is(':checked');
                     aSettings.defaults.Debug.logAdventures = $('#aDebug_LogAdventures').is(':checked');
                     aSettings.defaults.Debug.logCombat = $('#aDebug_LogCombat').is(':checked');
-                    aSettings.defaults.Debug.writeLogToFile = $('#aDebug_WriteLogToFile').is(':checked');
-                    aSettings.defaults.Debug.logFilePath = $('#aDebug_LogFilePath').val();
+                    aSettings.defaults.Debug.logFileKeepCount = parseInt($('#aDebug_LogFileKeepCount').val()) || 5;
                     // Auto Adventures
                     aSettings.defaults.Adventures.reTrain = $('#aAdventure_RetrainUnits').is(':checked');
                     aSettings.defaults.Adventures.blackVortex = $('#aAdventure_BlackVortex').is(':checked');
@@ -7234,6 +7257,9 @@ const auto = {
     },
     init: function () {
         try {
+            // Rotate log files on startup if file logging is enabled
+            rotateLogFiles();
+
             game.gi.channels.ZONE.addPropertyObserver(
                 "ZONE_REFRESHED", game.getTracker('zRefresh', aUtils.trackers.zoneRefreshed)
             );
