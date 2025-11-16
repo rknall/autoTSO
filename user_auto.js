@@ -76,7 +76,15 @@ const WORK_TIME_OFFSET_SECONDS = 12;
 var getLogFilePath = function() {
     // Cache the path after first call
     if (!getLogFilePath.cachedPath) {
-        getLogFilePath.cachedPath = air.File.applicationDirectory.resolvePath('auto').resolvePath('autoTSO_debug.log').nativePath;
+        var logDir = air.File.applicationStorageDirectory.resolvePath('autoTSO');
+        try {
+            if (!logDir.exists) {
+                logDir.createDirectory();
+            }
+        } catch (e) {
+            console.error('Failed to create log directory:', e);
+        }
+        getLogFilePath.cachedPath = logDir.resolvePath('autoTSO_debug.log').nativePath;
     }
     return getLogFilePath.cachedPath;
 };
@@ -133,18 +141,19 @@ var rotateLogFiles = function() {
 var writeToLogFile = function(level, message) {
     try {
         var now = new Date();
+        var lz = function(n) { return n < 10 ? '0' + n : n; };
         var timestamp = [
             now.getFullYear(),
             '-',
-            String(now.getMonth() + 1).padStart(2, '0'),
+            lz(now.getMonth() + 1),
             '-',
-            String(now.getDate()).padStart(2, '0'),
+            lz(now.getDate()),
             ' ',
-            String(now.getHours()).padStart(2, '0'),
+            lz(now.getHours()),
             ':',
-            String(now.getMinutes()).padStart(2, '0'),
+            lz(now.getMinutes()),
             ':',
-            String(now.getSeconds()).padStart(2, '0')
+            lz(now.getSeconds())
         ].join('');
 
         var logLine = '[' + timestamp + '] [' + level + '] ' + message + '\n';
@@ -1101,7 +1110,8 @@ const aUtils = {
                 var allowedDirs = [
                     air.File.applicationDirectory.nativePath,
                     air.File.applicationStorageDirectory.nativePath,
-                    air.File.applicationDirectory.resolvePath('auto').nativePath
+                    air.File.applicationDirectory.resolvePath('auto').nativePath,
+                    air.File.applicationStorageDirectory.resolvePath('autoTSO').nativePath
                 ];
 
                 var fileNativePath = file.nativePath;
