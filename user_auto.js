@@ -72,9 +72,82 @@ const LIMITS = {
 
 const WORK_TIME_OFFSET_SECONDS = 12;
 
+// File logging helper
+var writeToLogFile = function(level, message) {
+    try {
+        if (!aSettings || !aSettings.defaults || !aSettings.defaults.Debug || !aSettings.defaults.Debug.writeLogToFile) {
+            return;
+        }
+
+        var logPath = aSettings.defaults.Debug.logFilePath;
+        if (!logPath) {
+            // Default path: user's Documents folder
+            logPath = air.File.documentsDirectory.resolvePath("autoTSO_debug.log").nativePath;
+        }
+
+        var now = new Date();
+        var timestamp = [
+            now.getFullYear(),
+            '-',
+            String(now.getMonth() + 1).padStart(2, '0'),
+            '-',
+            String(now.getDate()).padStart(2, '0'),
+            ' ',
+            String(now.getHours()).padStart(2, '0'),
+            ':',
+            String(now.getMinutes()).padStart(2, '0'),
+            ':',
+            String(now.getSeconds()).padStart(2, '0')
+        ].join('');
+
+        var logLine = '[' + timestamp + '] [' + level + '] ' + message + '\n';
+
+        var file = new air.File(logPath);
+        var stream = new air.FileStream();
+
+        // Append mode
+        stream.open(file, air.FileMode.APPEND);
+        stream.writeUTFBytes(logLine);
+        stream.close();
+    } catch (e) {
+        // Silent fail to avoid infinite loop
+    }
+};
+
+// Console setup with file logging
 if (typeof console === 'undefined') {
     var console = air.Introspector.Console;
 }
+
+// Wrap console methods to add file logging
+var originalConsoleLog = console.log;
+var originalConsoleInfo = console.info;
+var originalConsoleWarn = console.warn;
+var originalConsoleError = console.error;
+
+console.log = function() {
+    var message = Array.prototype.slice.call(arguments).join(' ');
+    originalConsoleLog.apply(console, arguments);
+    writeToLogFile('LOG', message);
+};
+
+console.info = function() {
+    var message = Array.prototype.slice.call(arguments).join(' ');
+    originalConsoleInfo.apply(console, arguments);
+    writeToLogFile('INFO', message);
+};
+
+console.warn = function() {
+    var message = Array.prototype.slice.call(arguments).join(' ');
+    originalConsoleWarn.apply(console, arguments);
+    writeToLogFile('WARN', message);
+};
+
+console.error = function() {
+    var message = Array.prototype.slice.call(arguments).join(' ');
+    originalConsoleError.apply(console, arguments);
+    writeToLogFile('ERROR', message);
+};
 
 // Session Data
 const aSession = {
@@ -625,6 +698,8 @@ const aSettings = {
             enableLogging: true,
             logAdventures: true,
             logCombat: true,
+            writeLogToFile: false,
+            logFilePath: "",
         },
         Security: {
             validateFilePaths: false,
@@ -1952,6 +2027,15 @@ const aUI = {
                         [9, "&#10551; Log combat events"],
                         [3, createSwitch('aDebug_LogCombat', aSettings.defaults.Debug.logCombat)],
                     ]),
+                    createTableRow([
+                        [9, "Write logs to file"],
+                        [3, createSwitch('aDebug_WriteLogToFile', aSettings.defaults.Debug.writeLogToFile)],
+                    ]),
+                    createTableRow([
+                        [3, "Log file path:"],
+                        [6, $('<input>', { 'id': 'aDebug_LogFilePath', 'class': 'form-control', 'type': 'text', 'value': aSettings.defaults.Debug.logFilePath || '', 'placeholder': 'Default: Documents/autoTSO_debug.log' })],
+                        [3, $('<button>', { 'id': 'aDebug_SelectLogFile', 'class': 'btn btn-primary btn-sm', 'text': 'Browse...' })],
+                    ]),
                     $('<br>'),
                     createTableRow([[9, 'Connectivity'], [3, '&nbsp;']], true),
                     createTableRow([
@@ -2019,6 +2103,23 @@ const aUI = {
                 aWindow.withBody('#aMail_Monitor').val(aSettings.defaults.Mail.TimerMinutes);
                 aWindow.withBody('#aMail_FriendsFilter').click(function () { aUI.modals.trade.filterSettings('Friends') });
                 aWindow.withBody('#aMail_ResourcesFilter').click(function () { aUI.modals.trade.filterSettings('Resources') });
+                aWindow.withBody('#aDebug_SelectLogFile').click(function () {
+                    var file = new air.File();
+                    var currentPath = $('#aDebug_LogFilePath').val();
+                    if (currentPath) {
+                        try {
+                            file.nativePath = currentPath;
+                        } catch (e) {
+                            file = air.File.documentsDirectory;
+                        }
+                    } else {
+                        file = air.File.documentsDirectory;
+                    }
+                    file.browseForSave("Select Log File Location");
+                    file.addEventListener(air.Event.SELECT, function (event) {
+                        $('#aDebug_LogFilePath').val(event.target.nativePath);
+                    });
+                });
                 aWindow.withBody('.buildingSettings').click(function () {
                     aUI.modals.buildingSettings($(this).attr('id').replace('aBuildings_', ''));
                 });
@@ -2055,6 +2156,8 @@ const aUI = {
                     aSettings.defaults.Debug.enableLogging = $('#aDebug_EnableLogging').is(':checked');
                     aSettings.defaults.Debug.logAdventures = $('#aDebug_LogAdventures').is(':checked');
                     aSettings.defaults.Debug.logCombat = $('#aDebug_LogCombat').is(':checked');
+                    aSettings.defaults.Debug.writeLogToFile = $('#aDebug_WriteLogToFile').is(':checked');
+                    aSettings.defaults.Debug.logFilePath = $('#aDebug_LogFilePath').val();
                     // Auto Adventures
                     aSettings.defaults.Adventures.reTrain = $('#aAdventure_RetrainUnits').is(':checked');
                     aSettings.defaults.Adventures.blackVortex = $('#aAdventure_BlackVortex').is(':checked');
